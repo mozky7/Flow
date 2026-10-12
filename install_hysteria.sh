@@ -1,9 +1,8 @@
 #!/bin/bash
-# Server setup script for Hysteria v1 (UDP D&T&A-64kbs) matching your Thai config
+# Server setup script for Hysteria v1 (UDP D&T&A-64kbs & E-SAN UDP) on cheapvp.drmozky.online
 set -e
 
 OBFS_PASS="agnudp"
-AUTH_PASS="memduh"
 LISTEN_PORT="36712"
 PORT_START="10000"
 PORT_END="50000"
@@ -24,7 +23,7 @@ if [ ! -f /etc/hysteria/cert.crt ]; then
         -keyout /etc/hysteria/cert.key -out /etc/hysteria/cert.crt
 fi
 
-# Write server config
+# Write server config - supports all auth variations (memduh, 1234, memduh:1234, esan, esan:esan)
 cat <<EOF > /etc/hysteria/config.json
 {
   "listen": ":${LISTEN_PORT}",
@@ -34,7 +33,7 @@ cat <<EOF > /etc/hysteria/config.json
   "obfs": "${OBFS_PASS}",
   "auth": {
     "mode": "passwords",
-    "config": ["${AUTH_PASS}"]
+    "config": ["memduh", "1234", "memduh:1234", "esan", "esan:esan"]
   },
   "up_mbps": 100,
   "down_mbps": 100
@@ -58,14 +57,19 @@ LimitNOFILE=65535
 WantedBy=multi-user.target
 EOF
 
-# Setup iptables UDP port hopping
+# Setup iptables UDP port hopping (ports 10000:50000 -> 36712 and 443 UDP -> 36712)
 echo "[*] Setting up UDP port hopping (ports ${PORT_START}:${PORT_END} -> ${LISTEN_PORT})..."
 iptables -t nat -D PREROUTING -p udp --dport ${PORT_START}:${PORT_END} -j REDIRECT --to-ports ${LISTEN_PORT} 2>/dev/null || true
 iptables -t nat -A PREROUTING -p udp --dport ${PORT_START}:${PORT_END} -j REDIRECT --to-ports ${LISTEN_PORT}
+
+echo "[*] Setting up UDP port 443 redirect -> ${LISTEN_PORT}..."
+iptables -t nat -D PREROUTING -p udp --dport 443 -j REDIRECT --to-ports ${LISTEN_PORT} 2>/dev/null || true
+iptables -t nat -A PREROUTING -p udp --dport 443 -j REDIRECT --to-ports ${LISTEN_PORT}
 
 systemctl daemon-reload
 systemctl enable hysteria-server
 systemctl restart hysteria-server
 
 echo "[+] Hysteria Server is active on cheapvp.drmozky.online!"
-echo "[+] Listening on UDP port range ${PORT_START}-${PORT_END} with obfs='${OBFS_PASS}'"
+echo "[+] Listening on UDP port range ${PORT_START}-${PORT_END} and port 443 UDP with obfs='${OBFS_PASS}'"
+echo "[+] Supported credentials: memduh:1234, memduh, 1234"
